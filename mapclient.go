@@ -180,14 +180,28 @@ func (m *MapService) buildHmac(tokens ...string) string {
 func (m *MapService) addAuthenticationHeaders(req *http.Request, body []byte) {
 	// Build the authentication values that Game On! requires. If
 	// the body is empty, do not include it in the calculations.
-	var bodyHash, sig string
-	ts := time.Now().UTC().Format(time.RFC3339)
-	if len(body) > 0 {
-		bodyHash = m.hash(body)
-		req.Header.Set("gameon-sig-body", bodyHash)
-		sig = m.buildHmac(m.systemID, ts, bodyHash)
+	var bodyHash, sig, ts string
+	oldStyle := true
+	if oldStyle {
+		ts = time.Now().UTC().Format(time.RFC3339)
+		if len(body) > 0 {
+			bodyHash = m.hash(body)
+			req.Header.Set("gameon-sig-body", bodyHash)
+			sig = m.buildHmac(m.systemID, ts, bodyHash)
+		} else {
+			sig = m.buildHmac(m.systemID, ts)
+		}
 	} else {
-		sig = m.buildHmac(m.systemID, ts)
+		ts = time.Now().UTC().Format(time.RFC1123)
+		if len(body) > 0 {
+			bodyHash = m.hash(body)
+			req.Header.Set("gameon-sig-body", bodyHash)
+			fmt.Println("Method", req.Method, "uri ", req.RequestURI)
+			sig = m.buildHmac(req.Method, req.RequestURI, m.systemID, ts, bodyHash)
+		} else {
+			fmt.Printf("Method '%s' '%s'\n", req.Method, req.URL.Path)
+			sig = m.buildHmac(req.Method, req.URL.Path, m.systemID, ts)
+		}
 	}
 	// Set the required headers.
 	req.Header.Set("gameon-id", m.systemID)
