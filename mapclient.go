@@ -196,8 +196,8 @@ func (m *MapService) addAuthenticationHeaders(req *http.Request, body []byte) {
 		if len(body) > 0 {
 			bodyHash = m.hash(body)
 			req.Header.Set("gameon-sig-body", bodyHash)
-			fmt.Println("Method", req.Method, "uri ", req.RequestURI)
-			sig = m.buildHmac(req.Method, req.RequestURI, m.systemID, ts, bodyHash)
+			fmt.Println("Method", req.Method, "uri ", req.URL.Path)
+			sig = m.buildHmac(req.Method, req.URL.Path, m.systemID, ts, bodyHash)
 		} else {
 			fmt.Printf("Method '%s' '%s'\n", req.Method, req.URL.Path)
 			sig = m.buildHmac(req.Method, req.URL.Path, m.systemID, ts)
