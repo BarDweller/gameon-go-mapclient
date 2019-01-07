@@ -110,7 +110,6 @@ func (m *MapService) GetSites() ([]Site, error) {
 func (m *MapService) GetSite(id string) (Site, error) {
 	var site Site
 	if response, status, err := m.doGet(strings.Join([]string{m.url, id}, "/")); err == nil {
-		fmt.Println(string(response))
 		if status != 200 {
 			err = fmt.Errorf("Bad Status %d : %s", status, response)
 		} else {
@@ -169,41 +168,56 @@ func (m *MapService) hash(message []byte) string {
 func (m *MapService) buildHmac(tokens ...string) string {
 	key := []byte(m.apiKey)
 	h := hmac.New(sha256.New, key)
-	s := ""
 	for _, t := range tokens {
-		s += t
+		h.Write([]byte(t))
 	}
-	h.Write([]byte(s))
 	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
 func (m *MapService) addAuthenticationHeaders(req *http.Request, body []byte) {
-	// Build the authentication values that Game On! requires. If
-	// the body is empty, do not include it in the calculations.
 	var bodyHash, sig, ts string
-	oldStyle := true
+
+	//If the url has query params, hash them into the header
+	values := req.URL.Query()
+	if len(values) > 0 {
+		names := ""
+		concatvals := ""
+		for k, v := range values {
+			names += k + ";"
+			for _, vc := range v {
+				concatvals += vc
+			}
+		}
+		hashedvals := m.hash([]byte(concatvals))
+		params := names + hashedvals
+		req.Header.Set("gameon-sig-params", params)
+	}
+
+	//if the request has a body, hash it.
+	if len(body) > 0 {
+		bodyHash = m.hash(body)
+		req.Header.Set("gameon-sig-body", bodyHash)
+	}
+
+	//add the final signature header (old/newstyle affects date format & signature content)
+	oldStyle := false
 	if oldStyle {
 		ts = time.Now().UTC().Format(time.RFC3339)
-		if len(body) > 0 {
-			bodyHash = m.hash(body)
-			req.Header.Set("gameon-sig-body", bodyHash)
+		if bodyHash != "" {
 			sig = m.buildHmac(m.systemID, ts, bodyHash)
 		} else {
 			sig = m.buildHmac(m.systemID, ts)
 		}
 	} else {
-		ts = time.Now().UTC().Format(time.RFC1123)
-		if len(body) > 0 {
-			bodyHash = m.hash(body)
-			req.Header.Set("gameon-sig-body", bodyHash)
-			fmt.Println("Method", req.Method, "uri ", req.URL.Path)
+		ts = time.Now().Format(time.RFC1123Z) //Note: do not use time.RFC1123, as Go's format is not Java compatible.
+		if bodyHash != "" {
 			sig = m.buildHmac(req.Method, req.URL.Path, m.systemID, ts, bodyHash)
 		} else {
-			fmt.Printf("Method '%s' '%s'\n", req.Method, req.URL.Path)
 			sig = m.buildHmac(req.Method, req.URL.Path, m.systemID, ts)
 		}
 	}
-	// Set the required headers.
+
+	// Set the other headers required for auth.
 	req.Header.Set("gameon-id", m.systemID)
 	req.Header.Set("gameon-date", ts)
 	req.Header.Set("gameon-signature", sig)
